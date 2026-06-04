@@ -149,13 +149,26 @@
                    .trim();
     }
 
+    function speak(text) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'tr-TR';
+        window.speechSynthesis.speak(utterance);
+    }
+
     function addMessage(role, text, save = true) {
         const div = document.createElement('div');
         div.className = `msg ${role}`;
         if (role === 'jarvis') {
-            // Yanıtı temizle
             const cleanedText = cleanResponse(text);
             div.innerHTML = parseMarkdown(cleanedText);
+            
+            const speakBtn = document.createElement('button');
+            speakBtn.innerHTML = '🔊';
+            speakBtn.style.cssText = "background:none; border:none; color:#58a6ff; cursor:pointer; font-size:12px; margin-top:5px; display:block;";
+            speakBtn.onclick = () => speak(cleanedText);
+            div.appendChild(speakBtn);
         } else {
             div.textContent = text;
         }
@@ -164,121 +177,26 @@
         if (save) saveToLocal();
     }
 
-    function saveToLocal() {
-        localStorage.setItem('jarvis_history', JSON.stringify(history));
-        localStorage.setItem('jarvis_html', chatBox.innerHTML);
-    }
-
-    function loadChat() {
-        const savedHTML = localStorage.getItem('jarvis_html');
-        const savedHistory = localStorage.getItem('jarvis_history');
-        if (savedHTML && savedHistory) {
-            chatBox.innerHTML = savedHTML;
-            history = JSON.parse(savedHistory);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-    }
-
-    function clearChat() {
-        if(confirm("Tüm sohbet silinsin mi?")) {
-            localStorage.clear();
-            location.reload();
-        }
-    }
-
-    async function generateImage(prompt) {
-        if (!prompt) return;
-        
-        loadingBar.style.display = 'block';
-        loadingBar.style.width = '30%';
-        
-        try {
-            const response = await fetch(IMG_API_URL, {
-                headers: { "Content-Type": "application/json" },
-                method: "POST",
-                body: JSON.stringify({ inputs: prompt }),
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({ error: "Vercel API hatası oluştu." }));
-                throw new Error(errData.error || `Hata kodu: ${response.status}`);
-            }
-
-            const blob = await response.blob();
-            const imageUrl = URL.createObjectURL(blob);
-
-            const imageHtml = `
-                <div class="image-result" CLASS="IMAGE-RESULT">
-                    <span>Görsel oluşturuldu: <strong>${escapeHTML(prompt)}</strong></span>
-                    <img src="${imageUrl}" alt="${escapeHTML(prompt)}" onload="this.parentElement.scrollIntoView(); document.getElementById('loading-bar').style.width='100%'; setTimeout(() => { document.getElementById('loading-bar').style.display='none'; document.getElementById('loading-bar').style.width='0%'; }, 400);">
-                </div>
-            `;
-            
-            addMessage('jarvis', imageHtml);
-            history.push({ role: "assistant", content: `[Görsel oluşturuldu: ${prompt}]` });
-        } catch (e) {
-            console.error("Image generation failed:", e);
-            addMessage('jarvis', `Hata: ${e.message}`);
-        } finally {
-            loadingBar.style.width = '100%';
-            setTimeout(() => { loadingBar.style.display = 'none'; loadingBar.style.width = '0%'; }, 400);
-        }
-    }
-
-    function triggerImageGen() {
-        const val = userInput.value.trim();
-        if (val) {
-            addMessage('user', `/img ${val}`);
-            userInput.value = '';
-            generateImage(val);
-        } else {
-            userInput.placeholder = "Önce ne çizileceğini yazın...";
-            setTimeout(() => { userInput.placeholder = "Aklınızda ne var? (Resim için /img prompt)"; }, 2000);
-        }
-    }
-
-    let activeMode = null; // null, 'drawing', 'editing'
-
-    function toggleModeOverlay() {
-        const overlay = document.getElementById('mode-overlay');
-        const penIcon = document.getElementById('pen-icon');
-        const closeIcon = document.getElementById('close-icon');
-        const input = document.getElementById('user-input');
-
-        if (activeMode) {
-            // Eğer bir mod aktifse (çarpı görünüyorsa), butona basınca modu kapat
-            activeMode = null;
-            penIcon.style.display = 'block';
-            closeIcon.style.display = 'none';
-            input.placeholder = "Aklınızda ne var?";
-            overlay.style.display = 'none';
-        } else {
-            // Mod aktif değilse menüyü aç/kapat
-            overlay.style.display = (overlay.style.display === 'none') ? 'block' : 'none';
-        }
-    }
-
-    function selectMode(mode) {
-        const penIcon = document.getElementById('pen-icon');
-        const closeIcon = document.getElementById('close-icon');
-        const input = document.getElementById('user-input');
-        const overlay = document.getElementById('mode-overlay');
-
-        // Yeni mod seç
-        activeMode = mode;
-        penIcon.style.display = 'none';
-        closeIcon.style.display = 'block';
-        input.placeholder = `${activeMode === 'drawing' ? 'Çizim' : 'Düzenleme'} modu aktif...`;
-        overlay.style.display = 'none';
-    }
+    // ... (other functions)
 
     async function handleSend() {
         const val = userInput.value.trim();
         if (!val && !activeFile) return;
 
-        // 1. MODLARA GÖRE KATI YÖNLENDİRME
+        const chatKeywords = ["merhaba", "selam", "naber", "nasılsın", "günaydın", "iyi akşamlar", "kimsin", "napiyon", "napıyon"];
+        const isChatRequest = chatKeywords.some(k => val.toLowerCase().includes(k));
+
+        // 1. MOD FARKINDALIĞI (Düz metin yazılırsa uyarı ver)
+        if (activeMode && isChatRequest) {
+            addMessage('user', val);
+            userInput.value = '';
+            addMessage('jarvis', `Şu an **${activeMode === 'drawing' ? 'Çizim' : 'Düzenleme'}** modundasınız. Normal sohbet etmek için lütfen çarpı (X) simgesine basarak normal moda dönün.`);
+            return;
+        }
+
+        // 2. MODLARA GÖRE KATI YÖNLENDİRME
         if (activeMode === 'editing') {
-            const editMsg = `Görsel Düzenleniyor... ${val}`;
+            const editMsg = `Sistem: Kullanıcı görsel düzenleme modunda. İşlem: ${val}`;
             addMessage('user', val);
             userInput.value = '';
             
@@ -312,7 +230,7 @@
             return;
         }
 
-        // 2. MODLAR ARASI ÇAPRAZ KONTROL
+        // 3. MODLAR ARASI ÇAPRAZ KONTROL
         const editKeywords = ["düzenle", "değiştir", "farklı yap", "düzenleme"];
         const drawingKeywords = ["çiz", "oluştur", "resim", "fotoğraf"];
         
@@ -330,7 +248,7 @@
             return;
         }
 
-        // 3. Normal Sohbet
+        // 4. Normal Sohbet
         const userMsg = activeFile ? `[${activeFile.name}] ${val}` : val;
         addMessage('user', userMsg);
         
