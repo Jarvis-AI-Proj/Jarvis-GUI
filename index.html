@@ -118,19 +118,52 @@
 
     async function generateEdit(prompt, file) {
         if (!prompt || !file) return;
-        loadingBar.style.display = 'block'; loadingBar.style.width = '30%';
+        loadingBar.style.display = 'block'; loadingBar.style.width = '10%';
+        
         try {
-            const reader = new FileReader(); reader.readAsDataURL(file);
+            // 1. ADIM: Düzenleme talimatını İngilizce'ye çevir
+            console.log("Düzenleme talimatı hazırlanıyor...");
+            const aiRes = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    messages: [{ role: "system", content: "Sen bir görsel düzenleme uzmanısın. Kullanıcının Türkçe düzenleme talimatını Pix2Pix modeli için sadece İngilizce, net ve teknik bir talimata çevir. Sadece İngilizce metni döndür." }, { role: "user", content: prompt }],
+                    model: "llama-3.3" 
+                })
+            });
+            const aiData = await aiRes.json();
+            const englishEditPrompt = aiData.choices[0].message.content.trim();
+            console.log("Yeni Düzenleme Promptu:", englishEditPrompt);
+
+            loadingBar.style.width = '30%';
+
+            // 2. ADIM: Dosyayı oku ve API'ye gönder
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64Image = reader.result;
-                const response = await fetch(EDIT_API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: base64Image, prompt: prompt }) });
-                if (!response.ok) throw new Error("Düzenleme Hatası");
-                const blob = await response.blob(); const url = URL.createObjectURL(blob);
+                const response = await fetch(EDIT_API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: base64Image, prompt: englishEditPrompt })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({ error: "Vercel limitine takıldı veya API hatası." }));
+                    throw new Error(err.error || "Düzenleme başarısız.");
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
                 const html = `<div class="image-result" CLASS="IMAGE-RESULT"><div style="display:flex;justify-content:space-between;align-items:center;"><span>Düzenlendi: <strong>${escapeHTML(prompt)}</strong></span><a href="${url}" download="jarvis-edit.jpg" style="color:#3fb950;text-decoration:none;font-size:12px;font-weight:bold;border:1px solid #238636;padding:4px 8px;border-radius:4px;">İNDİR</a></div><img src="${url}" onload="this.parentElement.scrollIntoView();"></div>`;
                 addMessage('jarvis', html);
+                loadingBar.style.width = '100%';
+                setTimeout(() => { loadingBar.style.display = 'none'; }, 400);
             };
-        } catch (e) { addMessage('jarvis', `Hata: ${e.message}`); }
-        finally { loadingBar.style.width = '100%'; setTimeout(() => { loadingBar.style.display = 'none'; }, 400); }
+        } catch (e) { 
+            addMessage('jarvis', `Hata: ${e.message}`); 
+            loadingBar.style.display = 'none';
+        }
     }
 
     function triggerImageGen() { const val = userInput.value.trim(); if (val) { addMessage('user', `/img ${val}`); userInput.value = ''; generateImage(val); } }
