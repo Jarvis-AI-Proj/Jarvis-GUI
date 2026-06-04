@@ -79,7 +79,25 @@
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
         </button>
 
-        <input type="text" id="user-input" placeholder="Aklınızda ne var? (Resim için /img prompt)" autocomplete="off">
+        <!-- Mod Değiştirme Butonu (Kalem/Çarpı) -->
+        <div style="position: relative;">
+            <button id="mode-btn" class="img-btn" onclick="toggleModeOverlay()" title="Modu Değiştir">
+                <svg id="pen-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                <svg id="close-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="display:none;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <!-- Mod Seçim Sekmesi (Overlay) -->
+            <div id="mode-overlay" style="display:none; position: absolute; bottom: 40px; left: 0; background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 300px; padding: 10px; z-index: 100;">
+                <div style="padding: 10px; cursor: pointer; border-bottom: 1px solid #30363d;" onclick="selectMode('drawing')">
+                    <strong>Çizim modu</strong><br><small style="color:#8b949e;">Jarvis bu modda sadece çizim yapar. Bu modda normal metin konuşması gibi yazarsanız, rastgele bir resim üretir.</small>
+                </div>
+                <div style="padding: 10px; cursor: pointer;" onclick="selectMode('editing')">
+                    <strong>Düzenleme modu</strong><br><small style="color:#8b949e;">Jarvis bu modda sadece fotoğraf düzenler. Bu modda normal metin konuşması gibi yazarsanız, fotoğrafınızı kendisine göre düzenler.</small>
+                </div>
+            </div>
+        </div>
+
+        <input type="text" id="user-input" placeholder="Aklınızda ne var?" autocomplete="off">
         <button class="send-btn" onclick="handleSend()">Gönder</button>
     </div>
     <div class="disclaimer">Jarvis bir dil modeli olduğu için hata yapabilir.</div>
@@ -209,20 +227,73 @@
         }
     }
 
+    let activeMode = null; // null, 'drawing', 'editing'
+
+    function toggleModeOverlay() {
+        const overlay = document.getElementById('mode-overlay');
+        overlay.style.display = (overlay.style.display === 'none') ? 'block' : 'none';
+    }
+
+    function selectMode(mode) {
+        const penIcon = document.getElementById('pen-icon');
+        const closeIcon = document.getElementById('close-icon');
+        const input = document.getElementById('user-input');
+        const overlay = document.getElementById('mode-overlay');
+
+        if (activeMode === mode) {
+            // Çarpıya basınca modu kapat
+            activeMode = null;
+            penIcon.style.display = 'block';
+            closeIcon.style.display = 'none';
+            input.placeholder = "Aklınızda ne var?";
+        } else {
+            // Mod seç
+            activeMode = mode;
+            penIcon.style.display = 'none';
+            closeIcon.style.display = 'block';
+            input.placeholder = `${activeMode === 'drawing' ? 'Çizim' : 'Düzenleme'} modu aktif...`;
+        }
+        overlay.style.display = 'none';
+    }
+
     async function handleSend() {
         const val = userInput.value.trim();
         if (!val && !activeFile) return;
 
-        if (val.startsWith('/img ')) {
-            const prompt = val.substring(5).trim();
-            if (prompt) {
-                addMessage('user', val);
-                userInput.value = '';
-                generateImage(prompt);
-                return;
-            }
+        // 1. MODLARA GÖRE KATI YÖNLENDİRME
+        if (activeMode === 'editing') {
+            addMessage('user', val);
+            userInput.value = '';
+            addMessage('jarvis', 'Görsel düzenleme modunda işleniyor: "' + val + '"');
+            return;
         }
 
+        if (activeMode === 'drawing') {
+            addMessage('user', val);
+            userInput.value = '';
+            generateImage(val);
+            return;
+        }
+
+        // 2. MODLAR ARASI ÇAPRAZ KONTROL
+        const editKeywords = ["düzenle", "değiştir", "farklı yap", "düzenleme"];
+        const drawingKeywords = ["çiz", "oluştur", "resim", "fotoğraf"];
+        
+        if (editKeywords.some(k => val.toLowerCase().includes(k))) {
+            addMessage('user', val);
+            userInput.value = '';
+            addMessage('jarvis', 'Düzenleme yapmak için lütfen kalem simgesine tıklayıp **Düzenleme modunu** seçin.');
+            return;
+        }
+        
+        if (drawingKeywords.some(k => val.toLowerCase().includes(k))) {
+            addMessage('user', val);
+            userInput.value = '';
+            addMessage('jarvis', 'Çizim yapmak için lütfen kalem simgesine tıklayıp **Çizim modunu** seçin.');
+            return;
+        }
+
+        // 3. Normal Sohbet
         const userMsg = activeFile ? `[${activeFile.name}] ${val}` : val;
         addMessage('user', userMsg);
         
