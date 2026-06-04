@@ -300,8 +300,11 @@
         }
 
         if (activeMode === 'drawing') {
-            addMessage('user', val); userInput.value = '';
-            generateImage(val);
+            addMessage('user', val);
+            userInput.value = '';
+            // Gereksiz kelimeleri temizle ki model daha iyi çizsin
+            const cleanPrompt = val.replace(/çiz|yap|oluştur|göster|resim|fotoğraf/gi, '').trim();
+            generateImage(cleanPrompt || val);
             return;
         }
 
@@ -313,7 +316,10 @@
         }
         if (drawingKeywords.some(k => val.toLowerCase().includes(k))) {
             addMessage('user', val); userInput.value = '';
-            addMessage('jarvis', 'Çizim yapmak için lütfen kalem simgesine tıklayıp **Çizim modunu** seçin.'); return;
+            // Buradan da temizleyip gönderiyoruz
+            const cleanPrompt = val.replace(/çiz|yap|oluştur|göster|resim|fotoğraf/gi, '').trim();
+            generateImage(cleanPrompt || val); 
+            return;
         }
 
         addMessage('user', activeFile ? `[${activeFile.name}] ${val}` : val);
