@@ -11,10 +11,15 @@
         header { padding: 15px 20px; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #30363d; position: relative; background: #161b22; z-index: 10; }
         header h1 { font-size: 18px; color: #58a6ff; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; }
         
-        .header-btns { position: absolute; right: 20px; display: flex; gap: 8px; }
+        .header-btns { position: absolute; right: 20px; display: flex; gap: 8px; align-items: center; }
         .h-btn { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; transition: 0.2s; }
         .h-btn:hover { background: #30363d; color: #f0f6fc; }
         .load-btn { border-color: #238636; color: #3fb950; }
+        
+        /* API KEY INPUT */
+        .api-key-container { display: flex; align-items: center; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 2px 8px; margin-right: 10px; }
+        .api-key-input { background: transparent; border: none; color: #c9d1d9; font-size: 11px; outline: none; width: 150px; padding: 4px 0; }
+        .api-key-input::placeholder { color: #484f58; }
 
         #chat-box { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background-color: #0d1117; scroll-behavior: smooth; }
         
@@ -34,8 +39,8 @@
         .input-area { padding: 10px 20px 20px; background: #161b22; border-top: 1px solid #30363d; }
         .input-box { display: flex; background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 6px 12px; align-items: center; gap: 10px; max-width: 900px; margin: 0 auto; }
         
-        .upload-label { cursor: pointer; color: #8b949e; display: flex; align-items: center; transition: 0.2s; }
-        .upload-label:hover { color: #58a6ff; }
+        .upload-label, .img-btn { cursor: pointer; color: #8b949e; display: flex; align-items: center; transition: 0.2s; background: none; border: none; padding: 0; }
+        .upload-label:hover, .img-btn:hover { color: #58a6ff; }
         #file-input { display: none; }
 
         #user-input { flex-grow: 1; border: none; background: transparent; padding: 10px; outline: none; color: #ecf2f8; font-size: 15px; }
@@ -44,6 +49,9 @@
         .disclaimer { text-align: center; font-size: 11px; color: #8b949e; margin-top: 10px; }
         #loading-bar { height: 2px; background: #58a6ff; width: 0%; transition: width 0.3s; position: absolute; bottom: 0; left: 0; display: none; }
         #file-info { display: none; padding: 5px 12px; font-size: 11px; color: #58a6ff; text-align: center; }
+
+        .image-result { margin-top: 10px; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; padding: 12px; background: #1c2128; }
+        .image-result img { width: 100%; display: block; border-radius: 6px; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -62,12 +70,16 @@
 <div class="input-area">
     <div id="file-info"></div>
     <div class="input-box">
-        <label for="file-input" class="upload-label">
+        <label for="file-input" class="upload-label" title="Dosya Yükle">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.66 1.34 3 3 3s3-1.34 3-3V5c0-2.21-1.79-4-4-4S8 2.79 8 5v12.5c0 3.31 2.69 6 6 6s6-2.69 6-6V6h-1.5z"/></svg>
         </label>
         <input type="file" id="file-input" onchange="showFile(this)">
         
-        <input type="text" id="user-input" placeholder="Aklınızda ne var?" autocomplete="off">
+        <button class="img-btn" onclick="triggerImageGen()" title="Resim Oluştur">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+        </button>
+
+        <input type="text" id="user-input" placeholder="Aklınızda ne var? (Resim için /img prompt)" autocomplete="off">
         <button class="send-btn" onclick="handleSend()">Gönder</button>
     </div>
     <div class="disclaimer">Jarvis bir dil modeli olduğu için hata yapabilir.</div>
@@ -79,6 +91,7 @@
     const loadingBar = document.getElementById('loading-bar');
     const fileInfo = document.getElementById('file-info');
     const API_URL = "https://jarvis-omega-eosin.vercel.app/api/chat";
+    const IMG_API_URL = "/api/generate"; // Vercel Proxy URL
     let history = [];
     let activeFile = null;
 
@@ -96,6 +109,11 @@
 
     function parseMarkdown(text) {
         let html = text;
+        // Handle custom image results
+        if (html.includes('CLASS="IMAGE-RESULT"')) {
+            return html;
+        }
+        
         html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
             return `<div class="code-container"><div class="code-header"><span>${(lang || 'CODE').toUpperCase()}</span></div><pre><code>${escapeHTML(code.trim())}</code></pre></div>`;
         });
@@ -140,9 +158,70 @@
         }
     }
 
+    async function generateImage(prompt) {
+        if (!prompt) return;
+        
+        loadingBar.style.display = 'block';
+        loadingBar.style.width = '30%';
+        
+        try {
+            const response = await fetch(IMG_API_URL, {
+                headers: { "Content-Type": "application/json" },
+                method: "POST",
+                body: JSON.stringify({ inputs: prompt }),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({ error: "Vercel API hatası oluştu." }));
+                throw new Error(errData.error || `Hata kodu: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const imageUrl = URL.createObjectURL(blob);
+
+            const imageHtml = `
+                <div class="image-result" CLASS="IMAGE-RESULT">
+                    <span>Görsel oluşturuldu: <strong>${escapeHTML(prompt)}</strong></span>
+                    <img src="${imageUrl}" alt="${escapeHTML(prompt)}" onload="this.parentElement.scrollIntoView(); document.getElementById('loading-bar').style.width='100%'; setTimeout(() => { document.getElementById('loading-bar').style.display='none'; document.getElementById('loading-bar').style.width='0%'; }, 400);">
+                </div>
+            `;
+            
+            addMessage('jarvis', imageHtml);
+            history.push({ role: "assistant", content: `[Görsel oluşturuldu: ${prompt}]` });
+        } catch (e) {
+            console.error("Image generation failed:", e);
+            addMessage('jarvis', `Hata: ${e.message}`);
+        } finally {
+            loadingBar.style.width = '100%';
+            setTimeout(() => { loadingBar.style.display = 'none'; loadingBar.style.width = '0%'; }, 400);
+        }
+    }
+
+    function triggerImageGen() {
+        const val = userInput.value.trim();
+        if (val) {
+            addMessage('user', `/img ${val}`);
+            userInput.value = '';
+            generateImage(val);
+        } else {
+            userInput.placeholder = "Önce ne çizileceğini yazın...";
+            setTimeout(() => { userInput.placeholder = "Aklınızda ne var? (Resim için /img prompt)"; }, 2000);
+        }
+    }
+
     async function handleSend() {
         const val = userInput.value.trim();
         if (!val && !activeFile) return;
+
+        if (val.startsWith('/img ')) {
+            const prompt = val.substring(5).trim();
+            if (prompt) {
+                addMessage('user', val);
+                userInput.value = '';
+                generateImage(prompt);
+                return;
+            }
+        }
 
         const userMsg = activeFile ? `[${activeFile.name}] ${val}` : val;
         addMessage('user', userMsg);
