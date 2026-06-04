@@ -141,20 +141,32 @@
     }
 
     function speak(text) {
-        if (!window.speechSynthesis) return;
+        if (!window.speechSynthesis) {
+            alert("Tarayıcınız ses özelliğini desteklemiyor.");
+            return;
+        }
+        
         window.speechSynthesis.cancel();
-        
         const utterance = new SpeechSynthesisUtterance(text);
-        const voices = window.speechSynthesis.getVoices();
-        // En iyi Türkçe sesi bulmaya çalış
-        const trVoice = voices.find(v => v.lang === 'tr-TR') || voices.find(v => v.lang.startsWith('tr'));
         
-        if (trVoice) utterance.voice = trVoice;
-        utterance.lang = 'tr-TR';
-        utterance.rate = 1.1; // Hafif hızlı daha doğal duyulur
-        utterance.pitch = 1;
+        // Seslerin yüklendiğinden emin ol
+        let voices = window.speechSynthesis.getVoices();
         
-        window.speechSynthesis.speak(utterance);
+        const setVoice = () => {
+            voices = window.speechSynthesis.getVoices();
+            const trVoice = voices.find(v => v.lang.includes('tr-TR') || v.lang.includes('tr'));
+            if (trVoice) utterance.voice = trVoice;
+            utterance.lang = 'tr-TR';
+            utterance.rate = 1;
+            window.speechSynthesis.speak(utterance);
+        };
+
+        if (voices.length === 0) {
+            // Eğer sesler henüz yüklenmediyse bekle ve tekrar dene
+            window.speechSynthesis.onvoiceschanged = setVoice;
+        } else {
+            setVoice();
+        }
     }
 
     // Sesleri önceden yükle (Tarayıcı hazırlığı)
